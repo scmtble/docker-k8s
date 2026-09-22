@@ -11,6 +11,8 @@ services:
       - --trusted-ca-file=/etc/kubernetes/pki/etcd/ca.crt
     volumes:
       - ./pki:/etc/kubernetes/pki:ro
+    ports:
+      - 2379:2379
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
@@ -46,7 +48,7 @@ services:
       - --enable-admission-plugins=NodeRestriction,ServiceAccount
       - --allow-privileged=true
     ports:
-      - 127.0.0.1:6443:6443
+      - 6443:6443
     volumes:
       - ./pki:/etc/kubernetes/pki:ro
     depends_on:
@@ -103,7 +105,7 @@ services:
       TLS_KEY_PATH: /etc/talos-server-crt/tls.key
       PORT: "50001"
     ports:
-      - ${TALOS_CSR_SIGNER_BIND_ADDRESS:-127.0.0.1}:50001:50001
+      - 50001:50001
     volumes:
       - ./pki/talos/ca.crt:/etc/talos-ca/tls.crt:ro
       - ./pki/talos/ca.key:/etc/talos-ca/tls.key:ro
