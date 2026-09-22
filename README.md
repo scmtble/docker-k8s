@@ -12,8 +12,13 @@ PostgreSQL database.
 ## Start
 
 ```sh
-TALOS_SIGNER_SANS="talos-csr-signer,localhost,127.0.0.1,CONTROL_PLANE_IP" \
-  ruby scripts/generate-pki.rb secrets.yaml pki
+go run ./cmd/pki generate \
+  --source secrets.yaml \
+  --output pki \
+  --cluster-name compose-k8s \
+  --api-server-url https://127.0.0.1:6443 \
+  --kubernetes-sans "kubernetes,kubernetes.default,kubernetes.default.svc,kubernetes.default.svc.cluster.local,kube-apiserver,localhost,10.96.0.1,127.0.0.1,CONTROL_PLANE_IP" \
+  --talos-sans "talos-csr-signer,localhost,127.0.0.1,CONTROL_PLANE_IP"
 test -f .env || cp .env.example .env # then set KINE_ENDPOINT on first setup
 docker compose up -d
 KUBECONFIG="$PWD/pki/kubeconfig/admin.conf" kubectl get --raw=/readyz

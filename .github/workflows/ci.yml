@@ -1,0 +1,132 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  control-plane:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      KUBERNETES_VERSION: v1.36.4
+      KINE_VERSION: v0.16.4
+      POSTGRES_VERSION: "17"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+
+      - name: Build and vet
+        run: |
+          go build ./...
+          go vet ./...
+
+      - name: Install talosctl
+        run: |
+          curl -sSfL "https://github.com/siderolabs/talos/releases/latest/download/talosctl-linux-amd64" -o /usr/local/bin/talosctl
+          chmod +x /usr/local/bin/talosctl
+          talosctl version --client
+
+      - name: Generate Talos secrets
+        run: talosctl gen secrets -o secrets.yaml
+
+      - name: Start PostgreSQL for Kine
+        run: |
+          docker run -d --name kine-postgres \
+            -e POSTGRES_DB=kine \
+            -e POSTGRES_USER=kine \
+            -e POSTGRES_PASSWORD=kine \
+            -p 127.0.0.1:5432:5432 \
+            "postgres:${POSTGRES_VERSION}-alpine"
+          for _ in $(seq 1 30); do
+            if docker exec kine-postgres pg_isready -U kine -d kine >/dev/null 2>&1; then
+              echo "PostgreSQL is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "PostgreSQL did not become ready" >&2
+          docker logs kine-postgres
+          exit 1
+
+      - name: Generate PKI
+        run: |
+          go run ./cmd/pki generate \
+            --source secrets.yaml \
+            --output pki \
+            --cluster-name compose-k8s \
+            --api-server-url https://127.0.0.1:6443 \
+            --kubernetes-sans "kubernetes,kubernetes.default,kubernetes.default.svc,kubernetes.default.svc.cluster.local,kube-apiserver,localhost,10.96.0.1,127.0.0.1" \
+            --talos-sans "talos-csr-signer,localhost,127.0.0.1"
+
+      - name: Write .env
+        run: |
+          printf 'KINE_ENDPOINT=postgres://kine:kine@127.0.0.1:5432/kine\n' > .env
+
+      - name: Start control plane
+        run: docker compose up -d
+
+      - name: Install kubectl
+        run: |
+          curl -sSfL "https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/amd64/kubectl" -o /usr/local/bin/kubectl
+          chmod +x /usr/local/bin/kubectl
+          kubectl version --client
+
+      - name: Wait for API server readiness
+        env:
+          KUBECONFIG: ${{ github.workspace }}/pki/kubeconfig/admin.conf
+        run: |
+          for _ in $(seq 1 60); do
+            if kubectl get --raw=/readyz >/dev/null 2>&1; then
+              echo "API server is ready"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "API server did not become ready" >&2
+          exit 1
+
+      - name: Verify cluster health
+        env:
+          KUBECONFIG: ${{ github.workspace }}/pki/kubeconfig/admin.conf
+        run: |
+          kubectl get --raw='/readyz?verbose'
+          kubectl get --raw='/healthz/etcd'
+          kubectl get namespaces
+
+      - name: Smoke test state persistence through Kine
+        env:
+          KUBECONFIG: ${{ github.workspace }}/pki/kubeconfig/admin.conf
+        run: |
+          kubectl create namespace ci-smoke
+          kubectl -n ci-smoke create secret generic smoke --from-literal=key=value
+          kubectl -n ci-smoke get secret smoke -o jsonpath='{.data.key}' | base64 -d | grep -qx 'value'
+          kubectl delete namespace ci-smoke
+
+      - name: Check Talos CSR signer is listening
+        run: |
+          for _ in $(seq 1 30); do
+            if (exec 3<>/dev/tcp/127.0.0.1/50001) 2>/dev/null; then
+              echo "Talos CSR signer is listening on 50001"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Talos CSR signer is not listening on 50001" >&2
+          exit 1
+
+      - name: Dump diagnostics on failure
+        if: failure()
+        run: |
+          docker compose ps || true
+          docker compose logs || true
+
+      - name: Tear down
+        if: always()
+        run: |
+          docker compose down -v || true
+          docker rm -f kine-postgres || true
