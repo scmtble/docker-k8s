@@ -65,7 +65,7 @@ jobs:
 
       - name: Write .env
         run: |
-          printf 'KINE_ENDPOINT=postgres://kine:kine@127.0.0.1:5432/kine\n' > .env
+          printf 'KINE_ENDPOINT=postgres://kine:kine@host.docker.internal:5432/kine\n' > .env
 
       - name: Start control plane
         run: docker compose up -d

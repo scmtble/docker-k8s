@@ -11,6 +11,8 @@ services:
       - --trusted-ca-file=/etc/kubernetes/pki/etcd/ca.crt
     volumes:
       - ./pki:/etc/kubernetes/pki:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
   kube-apiserver:
