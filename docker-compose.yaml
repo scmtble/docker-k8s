@@ -3,6 +3,8 @@ name: compose-k8s-control-plane
 services:
   kine:
     image: ghcr.io/k3s-io/kine:${KINE_VERSION:-v0.16.4}
+    # The generated TLS key files are owner-readable only.
+    user: "0:0"
     command:
       - --endpoint=${KINE_ENDPOINT:?set KINE_ENDPOINT in .env}
       - --listen-address=0.0.0.0:2379
@@ -96,6 +98,8 @@ services:
 
   talos-csr-signer:
     image: ${TALOS_CSR_SIGNER_IMAGE:-ghcr.io/clastix/talos-csr-signer@sha256:827b62b5fc2859d66f06f5c1f8d2473ab7109d0600d551269d8ddb98e4a39a18}
+    # The signer needs access to the owner-readable Talos CA private key.
+    user: "0:0"
     env_file:
       - ./pki/talos/signer.env
     environment:
