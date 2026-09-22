@@ -2,7 +2,7 @@ name: compose-k8s-control-plane
 
 services:
   kine:
-    image: ghcr.io/k3s-io/kine:${KINE_VERSION:-v0.16.4}
+    image: ghcr.io/k3s-io/kine:${KINE_VERSION:-v0.16.5}
     # The generated TLS key files are owner-readable only.
     user: "0:0"
     command:
@@ -20,7 +20,7 @@ services:
     restart: unless-stopped
 
   kube-apiserver:
-    image: registry.k8s.io/kube-apiserver:${KUBERNETES_VERSION:-v1.36.4}
+    image: registry.k8s.io/kube-apiserver:${KUBERNETES_VERSION:-v1.37.0}
     command:
       - kube-apiserver
       - --bind-address=0.0.0.0
@@ -58,7 +58,7 @@ services:
     restart: unless-stopped
 
   kube-controller-manager:
-    image: registry.k8s.io/kube-controller-manager:${KUBERNETES_VERSION:-v1.36.4}
+    image: registry.k8s.io/kube-controller-manager:${KUBERNETES_VERSION:-v1.37.0}
     command:
       - kube-controller-manager
       - --kubeconfig=/etc/kubernetes/pki/kubeconfig/controller-manager.conf
@@ -82,7 +82,7 @@ services:
     restart: unless-stopped
 
   kube-scheduler:
-    image: registry.k8s.io/kube-scheduler:${KUBERNETES_VERSION:-v1.36.4}
+    image: registry.k8s.io/kube-scheduler:${KUBERNETES_VERSION:-v1.37.0}
     command:
       - kube-scheduler
       - --kubeconfig=/etc/kubernetes/pki/kubeconfig/scheduler.conf

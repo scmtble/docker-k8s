@@ -10,8 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      KUBERNETES_VERSION: v1.36.4
-      KINE_VERSION: v0.16.4
+      KUBERNETES_VERSION: v1.37.0
+      KINE_VERSION: v0.16.5
       POSTGRES_VERSION: "17"
     steps:
       - uses: actions/checkout@v7
