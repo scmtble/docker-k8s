@@ -1,0 +1,110 @@
+name: compose-k8s-control-plane
+
+services:
+  kine:
+    image: ghcr.io/k3s-io/kine:${KINE_VERSION:-v0.16.4}
+    command:
+      - --endpoint=${KINE_ENDPOINT:?set KINE_ENDPOINT in .env}
+      - --listen-address=0.0.0.0:2379
+      - --server-cert-file=/etc/kubernetes/pki/etcd/server.crt
+      - --server-key-file=/etc/kubernetes/pki/etcd/server.key
+      - --trusted-ca-file=/etc/kubernetes/pki/etcd/ca.crt
+    volumes:
+      - ./pki:/etc/kubernetes/pki:ro
+    restart: unless-stopped
+
+  kube-apiserver:
+    image: registry.k8s.io/kube-apiserver:${KUBERNETES_VERSION:-v1.36.4}
+    command:
+      - kube-apiserver
+      - --bind-address=0.0.0.0
+      - --secure-port=6443
+      - --authorization-mode=Node,RBAC
+      - --client-ca-file=/etc/kubernetes/pki/ca.crt
+      - --tls-cert-file=/etc/kubernetes/pki/apiserver.crt
+      - --tls-private-key-file=/etc/kubernetes/pki/apiserver.key
+      - --etcd-servers=https://kine:2379
+      - --etcd-cafile=/etc/kubernetes/pki/etcd/ca.crt
+      - --etcd-certfile=/etc/kubernetes/pki/apiserver-etcd-client.crt
+      - --etcd-keyfile=/etc/kubernetes/pki/apiserver-etcd-client.key
+      - --service-cluster-ip-range=10.96.0.0/12
+      - --service-account-issuer=https://kubernetes.default.svc.cluster.local
+      - --service-account-key-file=/etc/kubernetes/pki/sa.pub
+      - --service-account-signing-key-file=/etc/kubernetes/pki/sa.key
+      - --kubelet-client-certificate=/etc/kubernetes/pki/apiserver-kubelet-client.crt
+      - --kubelet-client-key=/etc/kubernetes/pki/apiserver-kubelet-client.key
+      - --requestheader-client-ca-file=/etc/kubernetes/pki/front-proxy-ca.crt
+      - --requestheader-allowed-names=front-proxy-client
+      - --requestheader-extra-headers-prefix=X-Remote-Extra-
+      - --requestheader-group-headers=X-Remote-Group
+      - --requestheader-username-headers=X-Remote-User
+      - --proxy-client-cert-file=/etc/kubernetes/pki/front-proxy-client.crt
+      - --proxy-client-key-file=/etc/kubernetes/pki/front-proxy-client.key
+      - --encryption-provider-config=/etc/kubernetes/pki/encryption-config.yaml
+      - --enable-admission-plugins=NodeRestriction,ServiceAccount
+      - --allow-privileged=true
+    ports:
+      - 127.0.0.1:6443:6443
+    volumes:
+      - ./pki:/etc/kubernetes/pki:ro
+    depends_on:
+      - kine
+    restart: unless-stopped
+
+  kube-controller-manager:
+    image: registry.k8s.io/kube-controller-manager:${KUBERNETES_VERSION:-v1.36.4}
+    command:
+      - kube-controller-manager
+      - --kubeconfig=/etc/kubernetes/pki/kubeconfig/controller-manager.conf
+      - --authentication-kubeconfig=/etc/kubernetes/pki/kubeconfig/controller-manager.conf
+      - --authorization-kubeconfig=/etc/kubernetes/pki/kubeconfig/controller-manager.conf
+      - --client-ca-file=/etc/kubernetes/pki/ca.crt
+      - --cluster-signing-cert-file=/etc/kubernetes/pki/ca.crt
+      - --cluster-signing-key-file=/etc/kubernetes/pki/ca.key
+      - --root-ca-file=/etc/kubernetes/pki/ca.crt
+      - --service-account-private-key-file=/etc/kubernetes/pki/sa.key
+      - --cluster-cidr=10.244.0.0/16
+      - --service-cluster-ip-range=10.96.0.0/12
+      - --allocate-node-cidrs=true
+      - --use-service-account-credentials=true
+      - --leader-elect=false
+      - --bind-address=0.0.0.0
+    volumes:
+      - ./pki:/etc/kubernetes/pki:ro
+    depends_on:
+      - kube-apiserver
+    restart: unless-stopped
+
+  kube-scheduler:
+    image: registry.k8s.io/kube-scheduler:${KUBERNETES_VERSION:-v1.36.4}
+    command:
+      - kube-scheduler
+      - --kubeconfig=/etc/kubernetes/pki/kubeconfig/scheduler.conf
+      - --authentication-kubeconfig=/etc/kubernetes/pki/kubeconfig/scheduler.conf
+      - --authorization-kubeconfig=/etc/kubernetes/pki/kubeconfig/scheduler.conf
+      - --leader-elect=false
+      - --bind-address=0.0.0.0
+    volumes:
+      - ./pki:/etc/kubernetes/pki:ro
+    depends_on:
+      - kube-apiserver
+    restart: unless-stopped
+
+  talos-csr-signer:
+    image: ${TALOS_CSR_SIGNER_IMAGE:-ghcr.io/clastix/talos-csr-signer@sha256:827b62b5fc2859d66f06f5c1f8d2473ab7109d0600d551269d8ddb98e4a39a18}
+    env_file:
+      - ./pki/talos/signer.env
+    environment:
+      CA_CERT_PATH: /etc/talos-ca/tls.crt
+      CA_KEY_PATH: /etc/talos-ca/tls.key
+      TLS_CERT_PATH: /etc/talos-server-crt/tls.crt
+      TLS_KEY_PATH: /etc/talos-server-crt/tls.key
+      PORT: "50001"
+    ports:
+      - ${TALOS_CSR_SIGNER_BIND_ADDRESS:-127.0.0.1}:50001:50001
+    volumes:
+      - ./pki/talos/ca.crt:/etc/talos-ca/tls.crt:ro
+      - ./pki/talos/ca.key:/etc/talos-ca/tls.key:ro
+      - ./pki/talos/server.crt:/etc/talos-server-crt/tls.crt:ro
+      - ./pki/talos/server.key:/etc/talos-server-crt/tls.key:ro
+    restart: unless-stopped
