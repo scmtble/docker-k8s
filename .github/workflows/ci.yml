@@ -40,7 +40,7 @@ jobs:
             -e POSTGRES_DB=kine \
             -e POSTGRES_USER=kine \
             -e POSTGRES_PASSWORD=kine \
-            -p 127.0.0.1:5432:5432 \
+            -p 5432:5432 \
             "postgres:${POSTGRES_VERSION}-alpine"
           for _ in $(seq 1 30); do
             if docker exec kine-postgres pg_isready -U kine -d kine >/dev/null 2>&1; then
